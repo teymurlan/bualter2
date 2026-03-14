@@ -7,15 +7,23 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters.callback_data import CallbackData
+from aiogram.client.default import DefaultBotProperties  # <-- ДОБАВЛЕН НОВЫЙ ИМПОРТ
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import database as db
 from ai_parser import parse_message, transcribe_audio
 
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=os.getenv("BOT_TOKEN", "YOUR_TOKEN"), parse_mode="HTML")
+
+# --- ИЗМЕНЕНА ИНИЦИАЛИЗАЦИЯ БОТА ---
+bot = Bot(
+    token=os.getenv("BOT_TOKEN", "YOUR_TOKEN"),
+    default=DefaultBotProperties(parse_mode="HTML")
+)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
+
+# ... дальше идет остальной код без изменений ...
 
 # --- ПРОФЕССИОНАЛЬНЫЕ КНОПКИ (CallbackData) ---
 class MenuCB(CallbackData, prefix="menu"):
