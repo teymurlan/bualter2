@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters.callback_data import CallbackData
-from aiogram.client.default import DefaultBotProperties  # <-- ДОБАВЛЕН НОВЫЙ ИМПОРТ
+from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import database as db
@@ -15,15 +15,13 @@ from ai_parser import parse_message, transcribe_audio
 
 logging.basicConfig(level=logging.INFO)
 
-# --- ИЗМЕНЕНА ИНИЦИАЛИЗАЦИЯ БОТА ---
+# Правильная инициализация бота для aiogram 3.7.0+
 bot = Bot(
     token=os.getenv("BOT_TOKEN", "YOUR_TOKEN"),
     default=DefaultBotProperties(parse_mode="HTML")
 )
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
-
-# ... дальше идет остальной код без изменений ...
 
 # --- ПРОФЕССИОНАЛЬНЫЕ КНОПКИ (CallbackData) ---
 class MenuCB(CallbackData, prefix="menu"):
@@ -163,7 +161,6 @@ async def handle_menu(call: types.CallbackQuery, callback_data: MenuCB, state: F
         if not active_orders:
             await call.message.edit_text("🎉 <b>У вас нет активных заказов!</b>\nОтличная работа.", reply_markup=back_kb)
         else:
-            # Показываем первый активный заказ (можно сделать пагинацию, но для простоты показываем списком с кнопками)
             text = "💼 <b>Ваши активные заказы:</b>\n➖➖➖➖➖➖➖➖➖➖\nВыберите заказ, чтобы завершить его:"
             kb = []
             for o in active_orders:
@@ -187,7 +184,6 @@ async def handle_menu(call: types.CallbackQuery, callback_data: MenuCB, state: F
 async def complete_order(call: types.CallbackQuery, callback_data: OrderCB):
     await db.update_order_status(callback_data.order_id, db.OrderStatus.COMPLETED)
     await call.answer("Заказ успешно завершен!", show_alert=True)
-    # Возвращаем в меню
     user = await db.get_user(call.from_user.id)
     await send_main_menu(call, user, edit=True)
 
