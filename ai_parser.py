@@ -3,6 +3,7 @@ import json
 from google import genai
 from google.genai import types
 
+# Инициализация клиента Gemini
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 async def transcribe_audio(file_path: str) -> str:
@@ -23,10 +24,7 @@ async def transcribe_audio(file_path: str) -> str:
         return f"Ошибка распознавания голоса: {str(e)}"
 
 async def parse_message(text: str) -> dict:
-    """
-    Парсинг естественного языка с помощью Gemini.
-    Строго возвращает JSON.
-    """
+    """Парсинг естественного языка с помощью Gemini. Строго возвращает JSON."""
     prompt = f"""
     Ты — AI-ассистент ERP-системы клининговой компании.
     Твоя задача — извлечь данные из текста и вернуть ИХ СТРОГО В ФОРМАТЕ JSON. Никакого текста до или после JSON.
