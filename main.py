@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -13,6 +14,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import database as db
 from ai_parser import parse_message, transcribe_audio
 
+# Загрузка переменных окружения (для локального запуска)
+load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
 # Правильная инициализация бота для aiogram 3.7.0+
