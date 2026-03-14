@@ -1,53 +1,67 @@
-import re
+import os
+import json
+from google import genai
+from google.genai import types
+
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 async def transcribe_audio(file_path: str) -> str:
-    """Заглушка для голосовых сообщений без OpenAI"""
-    return "⚠️ Распознавание голоса отключено (требуется API-ключ OpenAI)."
+    """Транскрибация голосовых сообщений с помощью Gemini 2.5 Flash."""
+    try:
+        with open(file_path, "rb") as audio_file:
+            audio_data = audio_file.read()
+            
+        response = await client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[
+                types.Part.from_bytes(data=audio_data, mime_type='audio/ogg'),
+                "Транскрибируй это голосовое сообщение на русском языке. Верни ТОЛЬКО распознанный текст, без приветствий и комментариев."
+            ]
+        )
+        return response.text.strip()
+    except Exception as e:
+        return f"Ошибка распознавания голоса: {str(e)}"
 
 async def parse_message(text: str) -> dict:
     """
-    Локальный парсер текста без использования нейросетей.
-    Ищет ключевые слова и цифры.
+    Парсинг естественного языка с помощью Gemini.
+    Строго возвращает JSON.
     """
-    text_lower = text.lower()
+    prompt = f"""
+    Ты — AI-ассистент ERP-системы клининговой компании.
+    Твоя задача — извлечь данные из текста и вернуть ИХ СТРОГО В ФОРМАТЕ JSON. Никакого текста до или после JSON.
     
-    # Ищем первую попавшуюся цифру в тексте (это будет сумма)
-    numbers = re.findall(r'\d+', text)
-    amount = float(numbers[0]) if numbers else 0.0
-
-    # 1. Проверка на запрос аналитики
-    if any(word in text_lower for word in ["отчет", "статистика", "аналитика", "итоги", "сколько"]):
-        return {"action_type": "analytics", "period": "day"}
-
-    # 2. Проверка на финансы
-    finance_map = {
-        "доход": "income", "оплата": "income",
-        "расход": "expense", "потратил": "expense", 
-        "купил": "purchase", "закупка": "purchase", "химия": "purchase",
-        "зарплата": "salary", "зп": "salary",
-        "аванс": "advance"
-    }
+    Определи action_type:
+    1. "finance" - доходы, расходы, зарплаты, авансы, закупки.
+    2. "order" - новые заказы на уборку.
+    3. "analytics" - запросы статистики/отчетов.
     
-    for word, category in finance_map.items():
-        if word in text_lower:
-            return {
-                "action_type": "finance",
-                "category": category,
-                "amount": amount,
-                "employee_name": None, # Без ИИ сложно точно вытащить имя
-                "comment": text
-            }
-
-    # 3. Проверка на создание заказа
-    if any(word in text_lower for word in ["уборка", "заказ", "клининг", "адрес"]):
-        # Убираем ключевые слова, чтобы оставить только адрес
-        address = text_lower.replace("уборка", "").replace("заказ", "").replace(str(int(amount)), "").strip()
-        return {
-            "action_type": "order",
-            "address": address.capitalize() if address else "Адрес из описания",
-            "price": amount,
-            "clean_type": "Стандарт",
-            "employee_name": None
-        }
-
-    return {"action_type": "unknown"}
+    Форматы JSON:
+    - Для "finance":
+      {{"action_type": "finance", "category": "income"|"expense"|"salary"|"advance"|"purchase", "amount": float, "employee_name": "string или null", "date": "YYYY-MM-DD или null", "comment": "string"}}
+    
+    - Для "order":
+      {{"action_type": "order", "address": "string", "price": float, "clean_type": "string", "date": "YYYY-MM-DD или null", "employee_name": "string или null"}}
+    
+    - Для "analytics":
+      {{"action_type": "analytics", "period": "day"|"week"|"month"|"all"}}
+    
+    Сообщение пользователя: "{text}"
+    """
+    try:
+        response = await client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.0
+            )
+        )
+        # Очистка на случай, если Gemini вернет markdown блоки
+        content = response.text.strip()
+        if content.startswith("```json"): content = content[7:-3]
+        elif content.startswith("```"): content = content[3:-3]
+        
+        return json.loads(content)
+    except Exception as e:
+        return {"action_type": "error", "error": str(e)}
