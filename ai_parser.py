@@ -1,51 +1,53 @@
-import os
-import json
-from openai import AsyncOpenAI
-
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+import re
 
 async def transcribe_audio(file_path: str) -> str:
-    """Transcribes voice messages using Whisper API."""
-    with open(file_path, "rb") as audio_file:
-        transcript = await client.audio.transcriptions.create(model="whisper-1", file=audio_file)
-        return transcript.text
+    """Заглушка для голосовых сообщений без OpenAI"""
+    return "⚠️ Распознавание голоса отключено (требуется API-ключ OpenAI)."
 
 async def parse_message(text: str) -> dict:
     """
-    Natural language parsing.
-    Extracts: employee name, amount, operation type, date.
-    Normalizes and formats the text.
+    Локальный парсер текста без использования нейросетей.
+    Ищет ключевые слова и цифры.
     """
-    prompt = f"""
-    Analyze the following message for a cleaning company ERP system.
-    Extract the data and return ONLY a valid JSON object. Normalize text, fix typos, and detect dates.
+    text_lower = text.lower()
     
-    Determine the action_type:
-    1. "finance" - for income, expense, salary, advance, or purchase.
-    2. "order" - for new cleaning orders.
-    3. "analytics" - for requesting stats/reports.
+    # Ищем первую попавшуюся цифру в тексте (это будет сумма)
+    numbers = re.findall(r'\d+', text)
+    amount = float(numbers[0]) if numbers else 0.0
+
+    # 1. Проверка на запрос аналитики
+    if any(word in text_lower for word in ["отчет", "статистика", "аналитика", "итоги", "сколько"]):
+        return {"action_type": "analytics", "period": "day"}
+
+    # 2. Проверка на финансы
+    finance_map = {
+        "доход": "income", "оплата": "income",
+        "расход": "expense", "потратил": "expense", 
+        "купил": "purchase", "закупка": "purchase", "химия": "purchase",
+        "зарплата": "salary", "зп": "salary",
+        "аванс": "advance"
+    }
     
-    JSON Formats:
-    - For "finance":
-      {{"action_type": "finance", "category": "income"|"expense"|"salary"|"advance"|"purchase", "amount": float, "employee_name": "string or null", "date": "YYYY-MM-DD or null", "comment": "string"}}
-    
-    - For "order":
-      {{"action_type": "order", "address": "string", "price": float, "clean_type": "string", "date": "YYYY-MM-DD or null", "employee_name": "string or null"}}
-    
-    - For "analytics":
-      {{"action_type": "analytics", "period": "day"|"week"|"month"|"all"}}
-    
-    Message to parse: "{text}"
-    """
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0
-        )
-        content = response.choices[0].message.content.strip()
-        if content.startswith("```json"): content = content[7:-3]
-        elif content.startswith("```"): content = content[3:-3]
-        return json.loads(content)
-    except Exception as e:
-        return {"action_type": "error", "error": str(e)}
+    for word, category in finance_map.items():
+        if word in text_lower:
+            return {
+                "action_type": "finance",
+                "category": category,
+                "amount": amount,
+                "employee_name": None, # Без ИИ сложно точно вытащить имя
+                "comment": text
+            }
+
+    # 3. Проверка на создание заказа
+    if any(word in text_lower for word in ["уборка", "заказ", "клининг", "адрес"]):
+        # Убираем ключевые слова, чтобы оставить только адрес
+        address = text_lower.replace("уборка", "").replace("заказ", "").replace(str(int(amount)), "").strip()
+        return {
+            "action_type": "order",
+            "address": address.capitalize() if address else "Адрес из описания",
+            "price": amount,
+            "clean_type": "Стандарт",
+            "employee_name": None
+        }
+
+    return {"action_type": "unknown"}
