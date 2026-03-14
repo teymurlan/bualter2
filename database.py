@@ -7,6 +7,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum as SQLEnum, BigInteger, func
 from sqlalchemy.future import select
 
+# База данных будет храниться в файле erp.db
 DATABASE_URL = "sqlite+aiosqlite:///./erp.db"
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -38,13 +39,6 @@ class User(Base):
     phone = Column(String, nullable=True)
     balance = Column(Float, default=0.0)
     invite_code = Column(String, unique=True, nullable=True)
-
-class Client(Base):
-    __tablename__ = "clients"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    phone = Column(String, nullable=True)
-    address = Column(String, nullable=True)
 
 class Order(Base):
     __tablename__ = "orders"
