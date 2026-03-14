@@ -7,13 +7,11 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum as SQLEnum, BigInteger, func
 from sqlalchemy.future import select
 
-# Жестко задаем SQLite (база будет в файле erp.db)
 DATABASE_URL = "sqlite+aiosqlite:///./erp.db"
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
-# --- DATABASE MODELS ---
 class Role(enum.Enum):
     ADMIN = "admin"
     EMPLOYEE = "employee"
@@ -67,12 +65,10 @@ class Transaction(Base):
     comment = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
-# --- TABLE CREATION ---
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-# --- CRUD: EMPLOYEES ---
 async def get_user(tg_id: int):
     async with AsyncSessionLocal() as session:
         return (await session.execute(select(User).where(User.tg_id == tg_id))).scalars().first()
@@ -112,7 +108,6 @@ async def get_all_employees():
     async with AsyncSessionLocal() as session:
         return (await session.execute(select(User).where(User.role == Role.EMPLOYEE))).scalars().all()
 
-# --- CRUD: FINANCES ---
 async def add_transaction(amount: float, category: str, comment: str, user_id: int = None, date: datetime = None):
     async with AsyncSessionLocal() as session:
         tx = Transaction(amount=amount, category=TxCategory(category), comment=comment, user_id=user_id, date=date or datetime.utcnow())
@@ -137,7 +132,6 @@ async def get_stats(period="day"):
         exp = (await session.execute(exp_q)).scalar() or 0.0
         return {"income": inc, "expense": exp, "profit": inc - exp}
 
-# --- CRUD: ORDERS ---
 async def create_order(address: str, price: float, clean_type: str, date: datetime = None, assigned_to: int = None):
     async with AsyncSessionLocal() as session:
         order = Order(address=address, price=price, clean_type=clean_type, date=date, assigned_to=assigned_to)
