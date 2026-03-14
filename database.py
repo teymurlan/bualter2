@@ -7,7 +7,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum as SQLEnum, BigInteger, func
 from sqlalchemy.future import select
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./erp.db")
+# Жестко задаем SQLite (база будет в файле erp.db)
+DATABASE_URL = "sqlite+aiosqlite:///./erp.db"
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
@@ -158,11 +159,3 @@ async def update_order_status(order_id: int, status: OrderStatus):
             await session.commit()
             return order
         return None
-
-# --- CRUD: CLIENTS ---
-async def create_client(name: str, phone: str, address: str):
-    async with AsyncSessionLocal() as session:
-        client = Client(name=name, phone=phone, address=address)
-        session.add(client)
-        await session.commit()
-        return client
