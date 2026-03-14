@@ -1,26 +1,19 @@
-import google.generativeai as genai
-import json
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_KEY"))
-
-model = genai.GenerativeModel('gemini-1.5-flash')
-
-async def parse_user_command(text: str):
-    prompt = f"""
-    Проанализируй команду для управления клинингом и верни ТОЛЬКО JSON.
-    Текст: "{text}"
-    Возможные действия: add_expense, add_income, pay_salary, set_status.
-    Формат ответа: {{"action": "название", "amount": число, "name": "имя", "task_id": число, "category": "текст"}}
-    Если данных нет, ставь null.
-    """
-    
-    response = model.generate_content(prompt)
-    try:
-        # Очистка от лишних символов Markdown, если Gemini их добавит
-        clean_json = response.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(clean_json)
-    except:
-        return {"action": "unknown", "text": text}
+# Простейший AI Parser для голосовых и текстовых команд (можно интегрировать Gemini API)
+def parse_command(command_text):
+    command_text = command_text.lower()
+    if "расход" in command_text:
+        words = command_text.split()
+        for w in words:
+            if w.isdigit():
+                return {"action": "add_expense", "amount": float(w)}
+    elif "зарплата" in command_text:
+        words = command_text.split()
+        for w in words:
+            if w.isdigit():
+                return {"action": "pay_salary", "amount": float(w)}
+    elif "заявка" in command_text:
+        if "завершить" in command_text:
+            return {"action": "complete_task"}
+        elif "начать" in command_text:
+            return {"action": "start_task"}
+    return {"action": "unknown"}
