@@ -1,99 +1,63 @@
 import asyncio
 import os
-import sys
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 
+from database import Database
+from ai_parser import parse_user_command
+
 load_dotenv()
+bot = Bot(token=os.getenv("BOT_TOKEN"))
+dp = Dispatcher(storage=MemoryStorage())
+db = Database()
 
-import database as db
-import ai_parser as ai
-
-token = os.getenv("TELEGRAM_BOT_TOKEN")
-if not token:
-    print("Error: TELEGRAM_BOT_TOKEN not found")
-    sys.exit(1)
-
-bot = Bot(token=token)
-dp = Dispatcher()
-
-class Form(StatesGroup):
-    waiting_ai = State()
-
-def main_menu(role: str):
-    kb = ReplyKeyboardBuilder()
-    if role == 'worker':
-        kb.row(types.KeyboardButton(text="📋 Мои заявки"))
+# --- КЛАВИАТУРЫ ---
+def get_main_menu(role):
+    builder = InlineKeyboardBuilder()
+    if role == 'admin':
+        builder.button(text="➕ Создать задачу", callback_data="create_task")
+        builder.button(text="💰 Отчет по деньгам", callback_data="fin_report")
     else:
-        kb.row(types.KeyboardButton(text="📊 Отчет"), types.KeyboardButton(text="🎙 AI Команда"))
-    return kb.as_markup(resize_keyboard=True)
+        builder.button(text="📋 Мои задачи", callback_data="my_tasks")
+    builder.adjust(1)
+    return builder.as_markup()
 
+# --- ХЭНДЛЕРЫ ---
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    user = await db.get_user(message.from_user.id)
+async def start(message: types.Message):
+    # В реальности тут проверка роли из БД
+    await message.answer(f"Привет, {message.from_user.full_name}! Я твой ERP-помощник.", 
+                         reply_markup=get_main_menu('admin'))
+
+@dp.message(F.text)
+async def handle_ai_commands(message: types.Message):
+    """Обработка текстовых команд через AI"""
+    if message.text.startswith('/'): return
     
-    if not user:
-        count = await db.get_employee_count()
-        if count == 0:
-            await db.add_employee(message.from_user.full_name, message.from_user.id, "admin")
-            user = await db.get_user(message.from_user.id)
-            await message.answer("🌟 Вы зарегистрированы как первый Администратор!")
-        else:
-            await message.answer(f"❌ Доступ запрещен. Ваш ID: {message.from_user.id}")
-            return
-            
-    await message.answer(f"✅ ERP Система готова. Роль: {user['role']}", reply_markup=main_menu(user['role']))
-
-@dp.message(F.text == "📋 Мои заявки")
-async def jobs_list(message: types.Message):
-    user = await db.get_user(message.from_user.id)
-    jobs = await db.get_active_jobs(user['id'])
-    if not jobs:
-        await message.answer("Нет назначенных заявок.")
-        return
-    for j in jobs:
-        b = InlineKeyboardBuilder()
-        b.button(text="🚀 Начать", callback_data=f"j:s:{j['id']}")
-        b.button(text="✅ Готово", callback_data=f"j:f:{j['id']}")
-        await message.answer(f"📍 {j['address']}", reply_markup=b.as_markup())
-
-@dp.callback_query(F.data.startswith("j:"))
-async def call_job(call: types.CallbackQuery):
-    _, act, j_id = call.data.split(":")
-    if act == "s":
-        await db.update_job_status(int(j_id), "in_progress", "started_at")
-        await call.answer("Начато")
+    data = await parse_user_command(message.text)
+    
+    if data['action'] == 'add_expense':
+        await db.add_transaction(message.from_user.id, 'expense', data['amount'], data['category'])
+        await message.answer(f"✅ Записал расход: {data['amount']} руб. на {data['category']}")
+    elif data['action'] == 'pay_salary':
+        await message.answer(f"💸 Начисляю зарплату {data['name']}: {data['amount']} руб.")
     else:
-        await db.update_job_status(int(j_id), "completed", "finished_at")
-        await call.answer("Завершено")
+        await message.answer("🤖 Я получил команду, но не уверен, что делать. Уточни запрос.")
 
-@dp.message(F.text == "📊 Отчет")
-async def show_report(message: types.Message):
-    stats = await db.get_stats()
-    await message.answer(f"📈 *Отчет*\n💰 Доход: {stats['income']} ₽\n📉 Расход: {stats['expense']} ₽", parse_mode="Markdown")
+@dp.callback_query(F.data == "my_tasks")
+async def show_tasks(callback: types.CallbackQuery):
+    tasks = await db.get_tasks()
+    res = "📅 Актуальные задачи:\n"
+    for t in tasks:
+        res += f"📍 {t[1]} | ⏰ {t[2]} | Статус: {t[3]}\n"
+    await callback.message.answer(res)
 
-@dp.message(F.text == "🎙 AI Команда")
-async def ai_start(message: types.Message, state: FSMContext):
-    await message.answer("Введите команду...")
-    await state.set_state(Form.waiting_ai)
-
-@dp.message(Form.waiting_ai)
-async def ai_proc(message: types.Message, state: FSMContext):
-    res = await ai.parse_command(message.text)
-    user = await db.get_user(message.from_user.id)
-    if res['type'] in ['income', 'expense']:
-        await db.add_transaction(res['type'], res['amount'], res['category'], message.text, user['id'])
-        await message.answer(f"✅ Записано: {res['type']} {res['amount']} ₽")
-    else:
-        await message.answer("🤖 Не удалось распознать команду.")
-    await state.clear()
-
+# --- ЗАПУСК ---
 async def main():
-    await db.init_db()
+    await db.init()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
