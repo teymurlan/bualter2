@@ -44,8 +44,6 @@ async def init_db():
                 FOREIGN KEY(job_id) REFERENCES jobs(id)
             )
         """)
-        # Добавляем вас как админа (замените 0 на ваш реальный ID из @userinfobot)
-        await db.execute("INSERT OR IGNORE INTO employees (name, telegram_id, role) VALUES (?, ?, ?)", ("Admin", 0, "admin"))
         await db.commit()
 
 async def get_user(tg_id: int):
@@ -53,6 +51,17 @@ async def get_user(tg_id: int):
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM employees WHERE telegram_id = ?", (tg_id,)) as cursor:
             return await cursor.fetchone()
+
+async def get_employee_count():
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM employees") as cursor:
+            res = await cursor.fetchone()
+            return res[0]
+
+async def add_employee(name: str, tg_id: int, role: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO employees (name, telegram_id, role) VALUES (?, ?, ?)", (name, tg_id, role))
+        await db.commit()
 
 async def get_active_jobs(worker_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
