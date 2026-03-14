@@ -10,14 +10,13 @@ import database as db
 from ai_parser import parse_message, transcribe_audio
 
 logging.basicConfig(level=logging.INFO)
+# Берем только BOT_TOKEN
 bot = Bot(token=os.getenv("BOT_TOKEN", "YOUR_TOKEN"))
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
-# Временное хранилище для подтверждения действий AI
 pending_actions = {}
 
-# --- ROLE CHECKING & AUTH ---
 async def check_access(message: types.Message):
     user = await db.get_user(message.from_user.id)
     if not user:
@@ -27,7 +26,6 @@ async def check_access(message: types.Message):
             return admin
     return user
 
-# --- COMMAND HANDLERS ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     args = message.text.split()
@@ -62,14 +60,12 @@ async def cmd_invite(message: types.Message):
         bot_info = await bot.get_me()
         await message.answer(f"🔗 Invite-ссылка для {name}:\n`https://t.me/{bot_info.username}?start={code}`", parse_mode="Markdown")
 
-# --- INLINE KEYBOARDS & CALLBACKS ---
 @dp.callback_query()
 async def handle_callbacks(call: types.CallbackQuery):
     user = await db.get_user(call.from_user.id)
     if not user: return await call.answer("Доступ запрещен", show_alert=True)
     data = call.data
 
-    # Обработка подтверждений AI
     if data in ["confirm_ai", "cancel_ai"]:
         action_data = pending_actions.pop(user.id, None)
         if data == "cancel_ai":
@@ -77,26 +73,21 @@ async def handle_callbacks(call: types.CallbackQuery):
         if not action_data:
             return await call.message.edit_text("⏳ Данные устарели. Повторите запрос.")
         
-        # Выполнение подтвержденного действия
         action = action_data.get("action_type")
         if action == "finance":
-            emp = await db.get_user_by_name(action_data.get("employee_name", "")) if action_data.get("employee_name") else None
-            await db.add_transaction(action_data.get("amount", 0), action_data.get("category", "expense"), action_data.get("comment", ""), emp.id if emp else None)
+            await db.add_transaction(action_data.get("amount", 0), action_data.get("category", "expense"), action_data.get("comment", ""))
             await call.message.edit_text("✅ Финансовая операция успешно сохранена в базу.")
         elif action == "order":
-            emp = await db.get_user_by_name(action_data.get("employee_name", "")) if action_data.get("employee_name") else None
-            await db.create_order(action_data.get("address", "Не указан"), action_data.get("price", 0), action_data.get("clean_type", "Стандарт"), assigned_to=emp.id if emp else None)
-            await call.message.edit_text("✅ Заказ успешно создан и назначен.")
+            await db.create_order(action_data.get("address", "Не указан"), action_data.get("price", 0), action_data.get("clean_type", "Стандарт"))
+            await call.message.edit_text("✅ Заказ успешно создан.")
         return
 
-    # Завершение заказа сотрудником
     if data.startswith("complete_order_"):
         order_id = int(data.split("_")[2])
         await db.update_order_status(order_id, db.OrderStatus.COMPLETED)
         await call.message.edit_text("✅ Заказ отмечен как завершенный!")
         return
 
-    # Навигация меню
     if data == "reports" and user.role == db.Role.ADMIN:
         stats = await db.get_stats("day")
         await call.message.answer(f"📊 Отчет за день:\nДоход: {stats['income']}₽\nРасход: {stats['expense']}₽\nПрибыль: {stats['profit']}₽")
@@ -121,19 +112,12 @@ async def handle_callbacks(call: types.CallbackQuery):
         await call.message.answer(f"💳 Ваш текущий баланс: {user.balance} ₽")
     await call.answer()
 
-# --- VOICE & TEXT MESSAGE PROCESSING ---
 @dp.message(F.voice)
 async def handle_voice(message: types.Message):
     user = await check_access(message)
     if user and user.role == db.Role.ADMIN:
-        msg = await message.answer("🎙 Распознаю голосовое сообщение...")
-        file = await bot.get_file(message.voice.file_id)
-        path = f"voice_{message.voice.file_id}.ogg"
-        await bot.download_file(file.file_path, path)
-        text = await transcribe_audio(path)
-        os.remove(path)
-        await msg.edit_text(f"🗣 Распознано: _{text}_", parse_mode="Markdown")
-        await process_business_logic(message, text, user)
+        text = await transcribe_audio("")
+        await message.answer(text)
 
 @dp.message(F.text)
 async def handle_text(message: types.Message):
@@ -143,7 +127,6 @@ async def handle_text(message: types.Message):
     elif user:
         await message.answer("ℹ️ Сотрудники используют только кнопки меню.")
 
-# --- MAIN BUSINESS LOGIC (WITH CONFIRMATION) ---
 async def process_business_logic(message: types.Message, text: str, user):
     msg = await message.answer("🤖 Анализирую запрос...")
     data = await parse_message(text)
@@ -157,9 +140,9 @@ async def process_business_logic(message: types.Message, text: str, user):
         ])
         
         if action == "finance":
-            preview = f"💰 **Финансы**\nТип: {data.get('category')}\nСумма: {data.get('amount')}₽\nСотрудник: {data.get('employee_name') or 'Нет'}\nКоммент: {data.get('comment')}"
+            preview = f"💰 **Финансы**\nТип: {data.get('category')}\nСумма: {data.get('amount')}₽\nКоммент: {data.get('comment')}"
         else:
-            preview = f"🧹 **Новый заказ**\nАдрес: {data.get('address')}\nЦена: {data.get('price')}₽\nТип: {data.get('clean_type')}\nСотрудник: {data.get('employee_name') or 'Не назначен'}"
+            preview = f"🧹 **Новый заказ**\nАдрес: {data.get('address')}\nЦена: {data.get('price')}₽"
             
         await msg.edit_text(f"Я понял вас так:\n\n{preview}\n\nВсё верно?", reply_markup=kb, parse_mode="Markdown")
         
@@ -167,9 +150,8 @@ async def process_business_logic(message: types.Message, text: str, user):
         stats = await db.get_stats(data.get("period", "day"))
         await msg.edit_text(f"📊 Аналитика ({data.get('period', 'day')}):\nДоход: {stats['income']}₽\nРасход: {stats['expense']}₽\nПрибыль: {stats['profit']}₽")
     else:
-        await msg.edit_text("❓ Не удалось распознать команду. Попробуйте иначе.")
+        await msg.edit_text("❓ Не понял команду. Напишите, например: 'Расход 5000 на химию' или 'Уборка Ленина 15 за 3000'")
 
-# --- DAILY REPORTS ---
 async def daily_report():
     async with db.AsyncSessionLocal() as session:
         admin = (await session.execute(db.select(db.User).where(db.User.role == db.Role.ADMIN))).scalars().first()
