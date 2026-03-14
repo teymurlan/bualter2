@@ -1,43 +1,68 @@
-import aiosqlite
+import sqlite3
 from datetime import datetime
 
-class Database:
-    def __init__(self, db_path="cleaning_erp.db"):
-        self.db_path = db_path
+DB_NAME = "cleaning_bot.db"
 
-    async def init(self):
-        async with aiosqlite.connect(self.db_path) as db:
-            # Юзеры и роли
-            await db.execute('''CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY, role TEXT, name TEXT, balance REAL DEFAULT 0)''')
-            # Заявки
-            await db.execute('''CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT, 
-                time TEXT, status TEXT, worker_id INTEGER, price REAL)''')
-            # Финансы
-            await db.execute('''CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, 
-                type TEXT, amount REAL, category TEXT, date TIMESTAMP)''')
-            await db.commit()
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS employees (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        role TEXT,
+        salary REAL DEFAULT 0
+    )''')
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_id INTEGER,
+        address TEXT,
+        task_type TEXT,
+        status TEXT DEFAULT 'pending',
+        start_time TEXT,
+        end_time TEXT,
+        geo TEXT,
+        FOREIGN KEY(employee_id) REFERENCES employees(id)
+    )''')
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS finances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT,
+        amount REAL,
+        description TEXT,
+        date TEXT
+    )''')
+    
+    conn.commit()
+    conn.close()
 
-    async def add_task(self, address, time, price):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("INSERT INTO tasks (address, time, status, price) VALUES (?, ?, ?, ?)",
-                             (address, time, 'new', price))
-            await db.commit()
+def add_employee(name, role):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO employees (name, role) VALUES (?, ?)", (name, role))
+    conn.commit()
+    conn.close()
 
-    async def get_tasks(self, worker_id=None):
-        async with aiosqlite.connect(self.db_path) as db:
-            if worker_id:
-                cursor = await db.execute("SELECT * FROM tasks WHERE worker_id = ?", (worker_id,))
-            else:
-                cursor = await db.execute("SELECT * FROM tasks")
-            return await cursor.fetchall()
+def get_employees():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM employees")
+    data = cursor.fetchall()
+    conn.close()
+    return data
 
-    async def add_transaction(self, user_id, t_type, amount, category):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("INSERT INTO transactions (user_id, type, amount, category, date) VALUES (?, ?, ?, ?, ?)",
-                             (user_id, t_type, amount, category, datetime.now()))
-            if t_type == 'salary':
-                await db.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, user_id))
-            await db.commit()
+def add_task(employee_id, address, task_type):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO tasks (employee_id, address, task_type) VALUES (?, ?, ?)", (employee_id, address, task_type))
+    conn.commit()
+    conn.close()
+
+def update_task_status(task_id, status, geo=None):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    time_field = "start_time" if status=="in_progress" else "end_time"
+    cursor.execute(f"UPDATE tasks SET status=?, {time_field}=?, geo=? WHERE id=?", (status, datetime.now(), geo, task_id))
+    conn.commit()
+    conn.close()
