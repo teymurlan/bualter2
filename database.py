@@ -1,68 +1,103 @@
 import sqlite3
 from datetime import datetime
 
-DB_NAME = "cleaning_bot.db"
+conn = sqlite3.connect("cleaning.db")
+cursor = conn.cursor()
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    
-    cursor.execute('''CREATE TABLE IF NOT EXISTS employees (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        role TEXT,
-        salary REAL DEFAULT 0
-    )''')
-    
-    cursor.execute('''CREATE TABLE IF NOT EXISTS tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee_id INTEGER,
-        address TEXT,
-        task_type TEXT,
-        status TEXT DEFAULT 'pending',
-        start_time TEXT,
-        end_time TEXT,
-        geo TEXT,
-        FOREIGN KEY(employee_id) REFERENCES employees(id)
-    )''')
-    
-    cursor.execute('''CREATE TABLE IF NOT EXISTS finances (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT,
-        amount REAL,
-        description TEXT,
-        date TEXT
-    )''')
-    
-    conn.commit()
-    conn.close()
 
-def add_employee(name, role):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO employees (name, role) VALUES (?, ?)", (name, role))
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS employees(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    telegram_id INTEGER,
+    salary_per_order INTEGER
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS orders(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client TEXT,
+    address TEXT,
+    price INTEGER,
+    employee_id INTEGER,
+    date TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS expenses(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    amount INTEGER,
+    date TEXT
+    )
+    """)
+
     conn.commit()
-    conn.close()
+
+
+def add_employee(name, telegram_id, salary):
+
+    cursor.execute(
+        "INSERT INTO employees(name,telegram_id,salary_per_order) VALUES(?,?,?)",
+        (name, telegram_id, salary)
+    )
+
+    conn.commit()
+
 
 def get_employees():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+
     cursor.execute("SELECT * FROM employees")
-    data = cursor.fetchall()
-    conn.close()
-    return data
+    return cursor.fetchall()
 
-def add_task(employee_id, address, task_type):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO tasks (employee_id, address, task_type) VALUES (?, ?, ?)", (employee_id, address, task_type))
-    conn.commit()
-    conn.close()
 
-def update_task_status(task_id, status, geo=None):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    time_field = "start_time" if status=="in_progress" else "end_time"
-    cursor.execute(f"UPDATE tasks SET status=?, {time_field}=?, geo=? WHERE id=?", (status, datetime.now(), geo, task_id))
+def add_order(client,address,price,employee_id):
+
+    date = datetime.now().strftime("%Y-%m-%d")
+
+    cursor.execute(
+        "INSERT INTO orders(client,address,price,employee_id,date) VALUES(?,?,?,?,?)",
+        (client,address,price,employee_id,date)
+    )
+
     conn.commit()
-    conn.close()
+
+
+def get_orders():
+
+    cursor.execute("SELECT * FROM orders")
+    return cursor.fetchall()
+
+
+def add_expense(name,amount):
+
+    date = datetime.now().strftime("%Y-%m-%d")
+
+    cursor.execute(
+        "INSERT INTO expenses(name,amount,date) VALUES(?,?,?)",
+        (name,amount,date)
+    )
+
+    conn.commit()
+
+
+def get_expenses():
+
+    cursor.execute("SELECT * FROM expenses")
+    return cursor.fetchall()
+
+
+def get_finance():
+
+    cursor.execute("SELECT SUM(price) FROM orders")
+    income = cursor.fetchone()[0] or 0
+
+    cursor.execute("SELECT SUM(amount) FROM expenses")
+    expense = cursor.fetchone()[0] or 0
+
+    profit = income - expense
+
+    return income, expense, profit
